@@ -557,6 +557,11 @@ jobs:
         git submodule update --depth=1 --recursive gcc_arc
         git submodule update --depth=1 --recursive picolibc
 
+    - name: Install pthread stub headers
+      run: |
+        cp ${GITHUB_WORKSPACE}/stubs/pthread.h \
+           ${GITHUB_WORKSPACE}/picolibc/newlib/libc/include/pthread.h
+
     - name: Build crosstool-ng
       run: |
         # Configure macOS build environment
