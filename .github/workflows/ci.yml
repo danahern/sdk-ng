@@ -8,6 +8,7 @@ on:
     - main
     - topic-*
     - v*-branch
+    - enable-posix-threads
   pull_request:
     branches:
     - main
@@ -103,7 +104,7 @@ jobs:
   # Setup
   setup:
     name: Setup
-    runs-on: ubuntu-latest  # ubuntu-24.04
+    runs-on: ubuntu-24.04
     outputs:
       hosts: ${{ steps.generate-matrix.outputs.hosts }}
       targets: ${{ steps.generate-matrix.outputs.targets }}
@@ -201,9 +202,10 @@ jobs:
 
           MATRIX_DEBUG="${{ github.event.inputs.debug }}"
         else
-          # Build all for pushes and releases
-          build_host_all="y"
-          build_target_all="y"
+          # Fork: only build linux-x86_64 + aarch64-zephyr-elf for push
+          build_host_linux_x86_64="y"
+          build_target_aarch64_zephyr_elf="y"
+          build_target_arm_zephyr_eabi="y"
         fi
 
         if [ "${build_host_all}" == "y" ]; then
@@ -272,7 +274,7 @@ jobs:
         if [ "${build_host_linux_aarch64}" == "y" ]; then
           MATRIX_HOSTS+='{
               "name": "linux-aarch64",
-              "runner": "zephyr-runner-v2-linux-arm64-4xlarge",
+              "runner": "ubuntu-latest",
               "container": "ghcr.io/zephyrproject-rtos/sdk-build:v1.5.2",
               "archive": "tar.xz"
             },'
@@ -281,7 +283,7 @@ jobs:
         if [ "${build_host_macos_x86_64}" == "y" ]; then
           MATRIX_HOSTS+='{
               "name": "macos-x86_64",
-              "runner": "zephyr-runner-v2-macos-arm64-2xlarge",
+              "runner": "macos-latest",
               "container": "",
               "archive": "tar.xz"
             },'
@@ -290,7 +292,7 @@ jobs:
         if [ "${build_host_macos_aarch64}" == "y" ]; then
           MATRIX_HOSTS+='{
               "name": "macos-aarch64",
-              "runner": "zephyr-runner-v2-macos-arm64-2xlarge",
+              "runner": "macos-latest",
               "container": "",
               "archive": "tar.xz"
             },'
@@ -362,7 +364,7 @@ jobs:
         if [ "${build_host_linux_aarch64}" == "y" ]; then
           MATRIX_TESTENVS+='{
               "name": "ubuntu-24.04-aarch64",
-              "runner": "zephyr-runner-v2-linux-arm64-4xlarge",
+              "runner": "ubuntu-latest",
               "container": "ghcr.io/zephyrproject-rtos/ci:main",
               "bundle-host": "linux-aarch64",
               "bundle-archive": "tar.xz"
@@ -372,7 +374,7 @@ jobs:
         if [ "${build_host_macos_x86_64}" == "y" ]; then
           MATRIX_TESTENVS+='{
               "name": "macos-15-x86_64",
-              "runner": "zephyr-runner-v2-macos-arm64-2xlarge",
+              "runner": "macos-latest",
               "container": "",
               "bundle-host": "macos-x86_64",
               "bundle-archive": "tar.xz"
@@ -382,7 +384,7 @@ jobs:
         if [ "${build_host_macos_aarch64}" == "y" ]; then
           MATRIX_TESTENVS+='{
               "name": "macos-15-aarch64",
-              "runner": "zephyr-runner-v2-macos-arm64-2xlarge",
+              "runner": "macos-latest",
               "container": "",
               "bundle-host": "macos-aarch64",
               "bundle-archive": "tar.xz"
@@ -392,7 +394,7 @@ jobs:
         if [ "${build_host_windows_x86_64}" == "y" ]; then
           MATRIX_TESTENVS+='{
               "name": "windows-2022-x86_64",
-              "runner": "zephyr-runner-v2-windows-x64-2xlarge",
+              "runner": "windows-latest",
               "container": "",
               "bundle-host": "windows-x86_64",
               "bundle-archive": "7z"
@@ -447,8 +449,7 @@ jobs:
   build-gnu-toolchain:
     name: GNU Toolchain ${{ matrix.target }} (${{ matrix.host.name }})
     needs: setup
-    runs-on: ubuntu-latest  #
-      #group: disabled
+    runs-on: ${{ matrix.host.runner }}
     container: ${{ matrix.host.container }}
     timeout-minutes: 720
 
@@ -807,8 +808,7 @@ jobs:
   build-llvm-toolchain:
     name: LLVM Toolchain (${{ matrix.host.name }})
     needs: setup
-    runs-on: ubuntu-latest  #
-      #group: disabled
+    runs-on: ${{ matrix.host.runner }}
     container: ${{ matrix.host.container }}
 
     defaults:
@@ -958,8 +958,7 @@ jobs:
   build-hosttools:
     name: Host Tools (${{ matrix.host.name }})
     needs: setup
-    runs-on: ubuntu-latest  #
-      #group: disabled
+    runs-on: ${{ matrix.host.runner }}
     container: ${{ matrix.host.container }}
 
     env:
@@ -1252,8 +1251,7 @@ jobs:
   build-cmake-pkg:
     name: CMake Package (${{ matrix.host.name }})
     needs: setup
-    runs-on: ubuntu-latest  #
-      #group: disabled
+    runs-on: ${{ matrix.host.runner }}
     container: ${{ matrix.host.container }}
 
     defaults:
@@ -1318,8 +1316,7 @@ jobs:
   build-dist-bundle:
     name: Distribution Bundle (${{ matrix.host.name }})
     needs: [ setup, build-gnu-toolchain, build-llvm-toolchain, build-hosttools, build-cmake-pkg ]
-    runs-on: ubuntu-latest  #
-      #group: disabled
+    runs-on: ${{ matrix.host.runner }}
     container: ${{ matrix.host.container }}
 
     defaults:
@@ -1546,8 +1543,7 @@ jobs:
   test-dist-bundle:
     name: Test (${{ matrix.testenv.name }}, ${{ matrix.toolchain }}) Subset ${{ matrix.subset }}
     needs: [ setup, build-dist-bundle ]
-    runs-on: ubuntu-latest  #
-      group: ${{ matrix.testenv.runner }}
+    runs-on: ${{ matrix.testenv.runner }}
     container: ${{ matrix.testenv.container }}
 
     defaults:
@@ -2010,7 +2006,7 @@ jobs:
   test-result:
     name: Test Result
     needs: [ test-dist-bundle ]
-    runs-on: ubuntu-latest  # ubuntu-24.04
+    runs-on: ubuntu-24.04
 
     # NOTE: The 'test-result' job depends on the 'test-dist-bundle' job and
     #       therefore only runs when all distribution bundle tests pass.
